@@ -1,0 +1,51 @@
+<!doctype html>
+<html class="no-js" lang="">
+
+<head>
+  <meta charset="utf-8">
+  <title></title>
+  <meta name="description" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <meta property="og:title" content="">
+  <meta property="og:type" content="">
+  <meta property="og:url" content="">
+  <meta property="og:image" content="">
+
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="apple-touch-icon" href="/icon.png">
+  <!-- Place favicon.ico in the root directory -->
+
+  <link rel="stylesheet" href="css/normalize.css">
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/game.css">
+
+  <meta name="theme-color" content="#000">
+</head>
+
+<body>
+
+  <!-- Add your site or application content here -->
+  <script src="./vendor/modernizr-3.11.2.min.js"></script>
+  <script src="./vendor/fps-meter.js"></script>
+  <script src="./vendor/phaser.min.js"></script>
+  <script src="./js/game.js"></script>
+
+  <div id="GameProps" class="props-window">
+    <label>Distance, Camera to Player</label>
+    <input id="CamDistance" type="text" value="500"/>
+    <label>Speed</label>
+    <input id="PlayerSpeed" type="text" />
+    <label>Player Z</label>
+    <input id="PlayerZ" type="text" />
+    <label>Time</label>
+    <input id="Time" type="text" />
+  </div>
+  <div id="OutputWindow">
+    <label>Output:</label>
+    <input id="OutputField" />
+  </div>
+
+</body>
+
+</html>

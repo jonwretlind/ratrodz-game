@@ -1,0 +1,25 @@
+{
+  "name": "js-game-template",
+  "version": "1.0.0",
+  "description": "Basic template for nodejs game development",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jonwretlind/js-game-template.git"
+  },
+  "author": "Jon C. Wretlind",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jonwretlind/js-game-template/issues"
+  },
+  "homepage": "https://github.com/jonwretlind/js-game-template#readme",
+  "dependencies": {
+    "express": "^4.17.1"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.14"
+  }
+}
