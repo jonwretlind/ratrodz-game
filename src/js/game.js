@@ -37,6 +37,7 @@
 
   // Level: map variable is array
   var levelMap = [];
+  
 
 
   //===================================
@@ -52,11 +53,11 @@
 
   //const ObjectsArr = [];
 
-  var circuit, camera, player, gameprops;
+  var circuit, camera, player, gameprops, worldX = 0;
 
   var state = STATE_INIT;
 
-  var newCamDistance;
+  var newCamDistance, newXVal;
 
   //set flags
   var initFlag = false;
@@ -83,44 +84,31 @@
     easeInOut: function(a,b,percent) { return a + (b-a)*((-Math.cos(percent*Math.PI)/2) + 0.5);        }
   };
 
-  // rotaton function from
-  // https://stackoverflow.com/questions/34050929/3d-point-rotation-algorithm
-  // ***
-  // points = {x: 0, y: 0, z: 0}
-  // ***
-  function rotate(pitch, roll, yaw) {
-    var cosa = Math.cos(yaw);
-    var sina = Math.sin(yaw);
+  var Util = {
 
-    var cosb = Math.cos(pitch);
-    var sinb = Math.sin(pitch);
-
-    var cosc = Math.cos(roll);
-    var sinc = Math.sin(roll);
-
-    var Axx = cosa*cosb;
-    var Axy = cosa*sinb*sinc - sina*cosc;
-    var Axz = cosa*sinb*cosc + sina*sinc;
-
-    var Ayx = sina*cosb;
-    var Ayy = sina*sinb*sinc + cosa*cosc;
-    var Ayz = sina*sinb*cosc - cosa*sinc;
-
-    var Azx = -sinb;
-    var Azy = cosb*sinc;
-    var Azz = cosb*cosc;
-
-    for (var i = 0; i < points.length; i++) {
-        var px = points[i].x;
-        var py = points[i].y;
-        var pz = points[i].z;
-
-        points[i].x = Axx*px + Axy*py + Axz*pz;
-        points[i].y = Ayx*px + Ayy*py + Ayz*pz;
-        points[i].z = Azx*px + Azy*py + Azz*pz;
+    timestamp:        function()                  { return new Date().getTime();                                    },
+    toInt:            function(obj, def)          { if (obj !== null) { var x = parseInt(obj, 10); if (!isNaN(x)) return x; } return Util.toInt(def, 0); },
+    toFloat:          function(obj, def)          { if (obj !== null) { var x = parseFloat(obj);   if (!isNaN(x)) return x; } return Util.toFloat(def, 0.0); },
+    limit:            function(value, min, max)   { return Math.max(min, Math.min(value, max));                     },
+    randomInt:        function(min, max)          { return Math.round(Util.interpolate(min, max, Math.random()));   },
+    randomChoice:     function(options)           { return options[Util.randomInt(0, options.length-1)];            },
+    percentRemaining: function(n, total)          { return (n%total)/total;                                         },
+    accelerate:       function(v, accel, dt)      { return v + (accel * dt);                                        },
+    interpolate:      function(a,b,percent)       { return a + (b-a)*percent                                        },
+    easeIn:           function(a,b,percent)       { return a + (b-a)*Math.pow(percent,2);                           },
+    easeOut:          function(a,b,percent)       { return a + (b-a)*(1-Math.pow(1-percent,2));                     },
+    easeInOut:        function(a,b,percent)       { return a + (b-a)*((-Math.cos(percent*Math.PI)/2) + 0.5);        },
+    exponentialFog:   function(distance, density) { return 1 / (Math.pow(Math.E, (distance * distance * density))); },
+  
+    increase:  function(start, increment, max) { // with looping
+      var result = start + increment;
+      while (result >= max)
+        result -= max;
+      while (result < 0)
+        result += max;
+      return result;
     }
-}
-
+  }; // Util
 
   // Misc Settings
   class Settings
@@ -148,6 +136,7 @@
     constructor(scene) {
       this.scene = scene;
       this.camDistField = document.getElementById("CamDistance");
+      this.worldXVal = document.getElementById("WorldX");
       this.playerSpeedField = document.getElementById("PlayerSpeed");
       this.playerZField = document.getElementById("PlayerZ");
       this.playerTimeField = document.getElementById("Time");
@@ -157,13 +146,20 @@
         //change the value of the camera distance on change to field
         newCamDistance = this.camDistance;
         console.log("distToPlayer = " + camera.distToPlayer);
-      })*/
+      });*/
+      /*this.worldXVal.addEventListener("change", function() {
+        //change the value of the world X Value
+        newXVal = this.worldXVal;
+        worldX = newXVal;
+        console.log("worldX Value = " + worldX);
+      });*/
     }
     init() {
       newCamDistance = this.camDistance;
     }
     update() {
       camera.distToPlayer = newCamDistance;
+      this.worldXVal.value = worldX;
       this.playerSpeedField.value = player.speed;
       this.playerZField.value = player.z;
       this.playerTimeField.value = time;
@@ -216,9 +212,11 @@
       this.curve = 0;
       this.cv = 0;
 
+      var seg = 3;
+
       //Holds values that define road curving sections
       this.ROAD = {
-        LENGTH: { NONE: 0, SHORT:  500/3, MEDIUM:  2500/3, LONG:  5000/3 }, // num segments / 3 to use for ENTER, HOLD and LEAVE values
+        LENGTH: { NONE: 0, SHORT:  500/seg, MEDIUM:  2500/seg, LONG:  5000/seg }, // num segments / 3 to use for ENTER, HOLD and LEAVE values
         CURVE:  { NONE: 0, EASY:    50, MEDIUM:   75, HARD:    100 }
       };
 
@@ -228,15 +226,15 @@
 
       // first number is whether straight 0, right 1, or left -1
       //                   ENTER                    HOLD                      LEAVE                    CURVE
-      this.levelMap = [ 0, this.ROAD.LENGTH.NONE,   this.ROAD.LENGTH.NONE,    this.ROAD.LENGTH.NONE,    this.ROAD.CURVE.NONE,
-                       -1, this.ROAD.LENGTH.SHORT,  this.ROAD.LENGTH.MEDIUM,  this.ROAD.LENGTH.SHORT,   this.ROAD.CURVE.MEDIUM,
-                        1, this.ROAD.LENGTH.SHORT,  this.ROAD.LENGTH.SHORT,   this.ROAD.LENGTH.SHORT,   this.ROAD.CURVE.EASY,
-                       -1, this.ROAD.LENGTH.LONG,   this.ROAD.LENGTH.SHORT,   this.ROAD.LENGTH.LONG,    this.ROAD.CURVE.MEDIUM,
+      this.levelMap = [ 0, this.ROAD.LENGTH.NONE,   this.ROAD.LENGTH.SHORT,   this.ROAD.LENGTH.NONE,    this.ROAD.CURVE.NONE,
+                       -1, this.ROAD.LENGTH.SHORT,  this.ROAD.LENGTH.MEDIUM,  this.ROAD.LENGTH.SHORT,   this.ROAD.CURVE.EASY,
+                        1, this.ROAD.LENGTH.SHORT,  this.ROAD.LENGTH.SHORT,   this.ROAD.LENGTH.SHORT,   this.ROAD.CURVE.MEDIUM,
+                        1, this.ROAD.LENGTH.LONG,   this.ROAD.LENGTH.SHORT,   this.ROAD.LENGTH.LONG,    this.ROAD.CURVE.MEDIUM,
                         0, this.ROAD.LENGTH.NONE,   this.ROAD.LENGTH.NONE,    this.ROAD.LENGTH.NONE,    this.ROAD.CURVE.NONE,
-                        1, this.ROAD.LENGTH.SHORT,  this.ROAD.LENGTH.MEDIUM,  this.ROAD.LENGTH.LONG,    this.ROAD.CURVE.MEDIUM,
+                        1, this.ROAD.LENGTH.SHORT,  this.ROAD.LENGTH.MEDIUM,  this.ROAD.LENGTH.LONG,    this.ROAD.CURVE.EASY,
                        -1, this.ROAD.LENGTH.LONG,   this.ROAD.LENGTH.MEDIUM,  this.ROAD.LENGTH.SHORT,   this.ROAD.CURVE.MEDIUM,
-                       -1, this.ROAD.LENGTH.LONG,   this.ROAD.LENGTH.LONG,    this.ROAD.LENGTH.LONG,    this.ROAD.CURVE.HARD,
-                        1, this.ROAD.LENGTH.SHORT,  this.ROAD.LENGTH.SHORT,   this.ROAD.LENGTH.SHORT,   this.ROAD.CURVE.EASY,
+                        1, this.ROAD.LENGTH.SHORT,  this.ROAD.LENGTH.LONG,   this.ROAD.LENGTH.SHORT,    this.ROAD.CURVE.HARD,
+                       -1, this.ROAD.LENGTH.SHORT,  this.ROAD.LENGTH.SHORT,   this.ROAD.LENGTH.SHORT,   this.ROAD.CURVE.EASY,
                         0, this.ROAD.LENGTH.NONE,   this.ROAD.LENGTH.NONE,    this.ROAD.LENGTH.NONE,    this.ROAD.CURVE.NONE
                       ];
 
@@ -289,11 +287,11 @@
         this.makeRoad(EasingUtil.easeIn(0, curve, n/enter));
       for(n = 0 ; n < hold  ; n++)
         this.makeRoad(curve);
-      for(n = 0 ; n < leave ; n++)
+      for(n = 0 ; n < leave ; n++) 
         this.makeRoad(EasingUtil.easeInOut(curve, 0, n/leave));
     }
 
-    makeRoad(curve) {
+    makeRoad(c) {
       //define road colors
       const COLORS = {
         LIGHT: { road: '0x888888', grass: '0x429352', rumble: '0xb8312e'},
@@ -306,11 +304,11 @@
       this.segments.push({
         index: n,
         point: {
-          world:  { x: 0, y: 0, z: n * this.segmentLength},
+          world:  { x: worldX, y: 0, z: n * this.segmentLength},
           screen: { x: 0, y: 0, w: 0},
           scale: -1
         },
-        curve: curve,
+        curve: c,
         color: Math.floor(n/this.rumble_segments)%2 ? COLORS.DARK : COLORS.LIGHT
       });
     }
@@ -326,14 +324,16 @@
 
     // projects 3D
     project3D(point, cameraX, cameraY, cameraZ, cameraDepth, curve) {
+      point.world.x = worldX;
+
       //translate world coords to camera coordinates
-      output = cameraX;
       var transX = point.world.x - cameraX;
       var transY = point.world.y - cameraY;
       var transZ = point.world.z - cameraZ;
-
+      
       //scaling factor based on similar triangles
       point.scale = cameraDepth/transZ; // Zero division !!!
+      if (player.speed > 0) cameraX -= curve*point.scale;
 
       //projecting camera coords onto normalized projection plane
       var projectedX = point.scale * transX;
@@ -343,9 +343,9 @@
       //scaling projected coords to the screen coords
       // if curve is positive then it goes right
       // if neg, then left
-      // if zero then straight
-      point.screen.x = Math.round((1 + projectedX) * SCR_CX + curve); // curve
+      // if zero then straightcurve
 
+      point.screen.x = Math.round((1 + projectedX) * SCR_CX + curve); // curve
       point.screen.y = Math.round((1 - projectedY) * SCR_CY);
       point.screen.w = Math.round(projectedW * SCR_CX);
     }
@@ -359,7 +359,14 @@
 
       //get base segment
       var baseSegment = this.getSegment(camera.z);
+      var baseCv = baseSegment.curve;
+      var basePercent = Util.percentRemaining(camera.z, this.segmentLength);      
       var baseIndex = baseSegment.index;
+      var xOffset;
+
+
+      output = "camera.x="+Math.round(camera.x);
+
       for ( var n = 0; n < this.visible_segments; n++) {
         //get current segment
         var currIndex = (baseIndex + n) % this.total_segments;
@@ -368,8 +375,12 @@
         // get the camera offset-Z to loop back the road
   			var offsetZ = (currIndex < baseIndex) ? this.roadLength : 0;
 
-        //get curve value of current segment
-        this.cv = currSegment.curve;
+        // adjust for keeping the road positioned correctly
+        xOffset = ( ! isNaN(baseCv) ) ? -(baseCv * basePercent) : 0;
+
+        //get curve value of current segment and adjust with xOffset
+        this.cv = currSegment.curve + xOffset;
+        currSegment.curve = this.cv;
 
         //project current segment to screen
         this.project3D(currSegment.point, camera.x, camera.y, camera.z-offsetZ, camera.distToPlane, this.cv);
@@ -473,7 +484,6 @@
 
       // max speed (to avoid moving for more than 1 road segment, assuming fps=60)
       this.maxSpeed = ((circuit.segmentLength) / step)/FPS;
-      console.log(this.maxSpeed);
 
       // driving control parameters
       this.speed = 0;	 // current speed
@@ -587,8 +597,8 @@
 
       this.accel = 1; //acceleration factor
       this.spacebar = null;
-      this.turn = 15; //f the amount the car moves when turning
-      this.centrifugal = .5; // apply force when player goes around curves
+      this.turn = 15; //the amount the car moves when turning
+      this.centrifugal = .75; // apply force when player goes around curves
     }
 
     // =============================================================================
@@ -629,27 +639,30 @@
               pedalFlag = false;
         }, this);
         // left-arrow - turn left
-
         this.input.keyboard.on('keydown-A', function(){
           var phys = this.centrifugal * player.speed/100; //physics for centrifugal force multiplier
           // allow turning only if player is moving forward
           if (player.speed > 0)  {
-              player.screen.x -= this.turn*phys;
-              this.sprBack2.x -= this.turn*phys*.15; //move landscape parallax
-              this.sprBack3.x -= this.turn*phys*.35;
+              this.sprBack2.x -= this.turn*phys*.25; //move landscape parallax
+              this.sprBack3.x -= this.turn*phys*.5;
+              player.screen.x += this.turn*phys;
               camera.x -= this.turn*phys*3; // move camera in parallax to player
+              worldX += this.turn*phys*3; // adjust world horizon
+
             }
         }, this);
         // right-arrow = turn right
         this.input.keyboard.on('keydown-D', function(){
           var phys = this.centrifugal * player.speed/100;
           if (player.speed > 0)  {
-              player.screen.x += this.turn*phys;
               this.sprBack2.x += this.turn*phys*.15;
               this.sprBack3.x += this.turn*phys*.35;
+              player.screen.x -= this.turn*phys;
               camera.x += this.turn*phys*3;
+              worldX  -= this.turn*phys*3;
             }
         }, this);
+
 
     	}// init()
       // =============================================================================
