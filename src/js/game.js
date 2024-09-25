@@ -78,10 +78,37 @@
     }
   
     const EasingUtil = {
-      easeIn:    function(a,b,percent) { return a + (b-a)*Math.pow(percent,2);                           },
-      easeOut:   function(a,b,percent) { return a + (b-a)*(1-Math.pow(1-percent,2));                     },
-      easeInOut: function(a,b,percent) { return a + (b-a)*((-Math.cos(percent*Math.PI)/2) + 0.5);        }
+      /**
+       * easeIn: Starts slow and accelerates towards the end.
+       * @param {number} start - The starting value (initial position).
+       * @param {number} end - The target value (final position).
+       * @param {number} percent - The percentage of the way through the transition (0 to 1).
+       */
+      easeIn: function(start, end, percent) {
+        return start + (end - start) * Math.pow(percent, 2);
+      },
+    
+      /**
+       * easeOut: Starts fast and decelerates towards the end.
+       * @param {number} start - The starting value (initial position).
+       * @param {number} end - The target value (final position).
+       * @param {number} percent - The percentage of the way through the transition (0 to 1).
+       */
+      easeOut: function(start, end, percent) {
+        return start + (end - start) * (1 - Math.pow(1 - percent, 2));
+      },
+    
+      /**
+       * easeInOut: Combines easeIn and easeOut for a smooth transition that starts slow, speeds up, and slows down again.
+       * @param {number} start - The starting value (initial position).
+       * @param {number} end - The target value (final position).
+       * @param {number} percent - The percentage of the way through the transition (0 to 1).
+       */
+      easeInOut: function(start, end, percent) {
+        return start + (end - start) * ((-Math.cos(percent * Math.PI) / 2) + 0.5);
+      }
     };
+
   
     // rotaton function from
     // https://stackoverflow.com/questions/34050929/3d-point-rotation-algorithm
@@ -149,6 +176,7 @@
         this.scene = scene;
         this.camDistField = document.getElementById("CamDistance");
         this.playerSpeedField = document.getElementById("PlayerSpeed");
+        this.worldX = document.getElementById("WorldX");
         this.playerZField = document.getElementById("PlayerZ");
         this.playerTimeField = document.getElementById("Time");
         this.outputField = document.getElementById("OutputField");
@@ -165,6 +193,7 @@
       update() {
         camera.distToPlayer = newCamDistance;
         this.playerSpeedField.value = player.speed;
+        this.worldX.value = camera.x;
         this.playerZField.value = player.z;
         this.playerTimeField.value = time;
         this.outputField.value = output;
@@ -327,7 +356,6 @@
       // projects 3D
       project3D(point, cameraX, cameraY, cameraZ, cameraDepth, curve) {
         //translate world coords to camera coordinates
-        output = cameraX;
         var transX = point.world.x - cameraX;
         var transY = point.world.y - cameraY;
         var transZ = point.world.z - cameraZ;
@@ -345,7 +373,6 @@
         // if neg, then left
         // if zero then straight
         point.screen.x = Math.round((1 + projectedX) * SCR_CX + curve); // curve
-  
         point.screen.y = Math.round((1 - projectedY) * SCR_CY);
         point.screen.w = Math.round(projectedW * SCR_CX);
       }
@@ -505,6 +532,7 @@
         /**
         * Updates player position.
         */
+       
         update(scene){
         this.scene = scene;
         this.easing -= .01;
@@ -533,8 +561,8 @@
             this.z += this.speed;
             if (this.z >= circuit.roadLength) this.z -= circuit.roadLength;
         }
+        
     }
-  
   
   
       class Camera
@@ -562,7 +590,7 @@
   
           this.distToPlane = 1 / (this.y / this.distToPlayer); //calculate tangent
         }
-  
+
         //update camera position
         update() {
   
@@ -571,6 +599,13 @@
   
           // don't let camera Z to go negative
           if (this.z<0) this.z += circuit.roadLength;
+
+          // Gradually return the camera to the center on straight roads
+          var currSegment = circuit.getSegment(player.z);
+
+          if (currSegment.curve === 0) {  // When road is straight
+              this.x = EasingUtil.easeOut(this.x, 0, 0.05);  // Gradually bring x back to zero
+          }
         }
       }
   
@@ -599,10 +634,21 @@
   
       init() {
           FPSMETER.tickStart();
-  
+          initFlag = false;
+
+            // Rotation matrix for X-axis
+            const rotateX = (point, angle) => {
+              const rad = Phaser.Math.DegToRad(angle);  // Convert degrees to radians
+
+              const newY = point.y * Math.cos(rad) - point.z * Math.sin(rad);
+              const newZ = point.y * Math.sin(rad) + point.z * Math.cos(rad);
+
+              return { y: newY, z: newZ };
+            }
+            
           // LISTENERS
           // listener to pause game
-                this.input.keyboard.on('keydown-P', function(){
+              this.input.keyboard.on('keydown-P', function(){
               console.log("Game is Paused. Press [P] to resume.");
                     this.settings.txtPause.text = "[P] Resume";
                     this.scene.pause();
@@ -628,33 +674,59 @@
           this.input.keyboard.on('keyup-UP', function(){
                 pedalFlag = false;
           }, this);
-          // left-arrow - turn left
-  
-          this.input.keyboard.on('keydown-A', function(){
+
+          // Rotation angle for banking based on the player's turning
+          let tiltAngle = 0;
+          let maxTiltAngle = 15;  // Max tilt angle for X-axis rotation (degrees)
+
+
+          this.input.keyboard.on('keydown-A', function(){ // A - turn left
             var phys = this.centrifugal * player.speed/100; //physics for centrifugal force multiplier
             // allow turning only if player is moving forward
             if (player.speed > 0)  {
+                tiltAngle = -maxTiltAngle;
                 player.screen.x -= this.turn*phys;
                 this.sprBack2.x -= this.turn*phys*.15; //move landscape parallax
                 this.sprBack3.x -= this.turn*phys*.35;
-                camera.x -= this.turn*phys*3; // move camera in parallax to player
+                camera.x -= this.turn*phys; // move camera in parallax to playER
+                // Rotate all world coordinates around the X-axis by tiltAngle
+                /*circuit.segments.forEach(segment => {
+                  const rotated = rotateX(segment.point.world, tiltAngle);
+                  segment.point.world.y = rotated.y;
+                  segment.point.world.z = rotated.z;*/
+              //});
               }
           }, this);
-          // right-arrow = turn right
-          this.input.keyboard.on('keydown-D', function(){
+
+          this.input.keyboard.on('keydown-D', function(){ // D - turn right
             var phys = this.centrifugal * player.speed/100;
             if (player.speed > 0)  {
+                tiltAngle = maxTiltAngle;
                 player.screen.x += this.turn*phys;
                 this.sprBack2.x += this.turn*phys*.15;
                 this.sprBack3.x += this.turn*phys*.35;
-                camera.x += this.turn*phys*3;
+                camera.x += this.turn*phys;
+                // Rotate all world coordinates around the X-axis by tiltAngle
+                //circuit.segments.forEach(segment => {
+                // const rotated = rotateX(segment.point.world, tiltAngle);
+                 // segment.point.world.y = rotated.y;
+                //  segment.point.world.z = rotated.z;
+              //});
               }
           }, this);
-  
+
+          this.input.keyboard.on('keyup-A', function(){
+           // tiltAngle = EasingUtil.easeInOut(tiltAngle, 0, 0.05);  // Gradually return to level
+          }, this);
+
+          this.input.keyboard.on('keyup-B', function(){
+          //  tiltAngle = EasingUtil.easeInOut(tiltAngle, 0, 0.05);  // Gradually return to level
+          }, this);
+
           }// init()
         // =============================================================================
         // =============================================================================
-  
+
   
       //load assets
       preload() {
